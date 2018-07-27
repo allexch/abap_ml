@@ -40,6 +40,7 @@ CLASS zcl_vector DEFINITION.
       max  RETURNING VALUE(rv_value) TYPE ty_float,
       mean RETURNING VALUE(rv_value) TYPE ty_float,
       std  RETURNING VALUE(rv_value) TYPE ty_float,
+      sum  RETURNING VALUE(rv_value) TYPE ty_float,
 
       scale IMPORTING iv_inplace TYPE flag DEFAULT ' ' RETURNING VALUE(ro_vector) TYPE REF TO zcl_vector,
       normalize IMPORTING iv_inplace TYPE flag DEFAULT ' ' RETURNING VALUE(ro_vector) TYPE REF TO zcl_vector,
@@ -60,8 +61,6 @@ CLASS zcl_vector DEFINITION.
 
     DATA: mt_float_vector TYPE tt_float.
 ENDCLASS.
-
-*----------------------------------------------------------------------*
 
 CLASS zcl_vector IMPLEMENTATION.
   METHOD constructor.
@@ -385,7 +384,6 @@ CLASS zcl_vector IMPLEMENTATION.
 
   METHOD mean.
     DATA: lv_float TYPE ty_float.
-    DATA: lt_float_vector TYPE tt_float.
 
     rv_value = 0.
     LOOP AT mt_float_vector INTO lv_float.
@@ -413,6 +411,16 @@ CLASS zcl_vector IMPLEMENTATION.
     ENDLOOP.
     rv_value = rv_value / ( LINES( mt_float_vector ) - 1 ).
     rv_value = sqrt( rv_value ).
+  ENDMETHOD.
+
+  METHOD sum.
+    DATA: lv_float TYPE ty_float.
+
+    rv_value = 0.
+    LOOP AT mt_float_vector INTO lv_float.
+      rv_value = rv_value + lv_float.
+    ENDLOOP.
+
   ENDMETHOD.
 
   METHOD scale.

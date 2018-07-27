@@ -42,7 +42,8 @@ CLASS zcl_matrix DEFINITION.
       constructor IMPORTING rows TYPE i cols TYPE i fill_value TYPE ty_float OPTIONAL.
     CLASS-METHODS:
       create_from IMPORTING it_table TYPE ANY TABLE iv_check TYPE flag DEFAULT 'X' RETURNING VALUE(ro_matrix) TYPE REF TO zcl_matrix EXCEPTIONS SIZE_ERROR INPUT_ERROR,
-      load_csv IMPORTING iv_filename TYPE string iv_sep TYPE c DEFAULT ';' iv_header TYPE flag DEFAULT 'X' RETURNING VALUE(ro_matrix) TYPE REF TO zcl_matrix EXCEPTIONS SIZE_ERROR INPUT_ERROR,
+      create_copy IMPORTING io_matrix TYPE REF TO zcl_matrix RETURNING VALUE(ro_matrix) TYPE REF TO zcl_matrix EXCEPTIONS SIZE_ERROR INPUT_ERROR,
+      load_from_csv IMPORTING iv_filename TYPE string iv_sep TYPE c DEFAULT ';' iv_header TYPE flag DEFAULT 'X' RETURNING VALUE(ro_matrix) TYPE REF TO zcl_matrix EXCEPTIONS SIZE_ERROR INPUT_ERROR,
       load_from_text IMPORTING it_strings TYPE table_of_strings iv_sep TYPE c DEFAULT ';' RETURNING VALUE(ro_matrix) TYPE REF TO zcl_matrix EXCEPTIONS SIZE_ERROR INPUT_ERROR,
       is_numeric_type_kind IMPORTING iv_type_kind TYPE c RETURNING VALUE(rv_ok) TYPE flag.
 
@@ -301,13 +302,22 @@ CLASS zcl_matrix IMPLEMENTATION.
     ro_matrix->set( EXPORTING it_table = it_table iv_check = iv_check ).
   ENDMETHOD.
 
+  METHOD create_copy.
+    DATA: lr_data TYPE REF TO data.
+    FIELD-SYMBOLS: <fs_table> TYPE INDEX TABLE.
+
+    lr_data = io_matrix->get_ref( ).
+    ASSIGN lr_data->* TO <fs_table>.
+    ro_matrix = zcl_matrix=>create_from( it_table = <fs_table> iv_check = ' ' ).
+  ENDMETHOD.
+
   METHOD set_row.
     FIELD-SYMBOLS: <fs_row> TYPE ANY TABLE.
 
     IF iv_index < 0 OR iv_index > mv_rows.
       RAISE INDEX_ERROR.
     ENDIF.
-    IF mv_rows <> io_vector->size( ).
+    IF mv_cols <> io_vector->size( ).
       RAISE SIZE_ERROR.
     ENDIF.
 
@@ -324,15 +334,15 @@ CLASS zcl_matrix IMPLEMENTATION.
     IF iv_index < 0 OR iv_index > mv_cols.
       RAISE INDEX_ERROR.
     ENDIF.
-    IF mv_cols <> io_vector->size( ).
+    IF mv_rows <> io_vector->size( ).
       RAISE SIZE_ERROR.
     ENDIF.
 
     lt_float_vector = io_vector->get( ).
 
     LOOP AT mt_float_matrix ASSIGNING <fs_row>.
+      READ TABLE lt_float_vector INTO lv_float INDEX sy-tabix.
       READ TABLE <fs_row> ASSIGNING <fs> INDEX iv_index.
-      READ TABLE lt_float_vector INTO lv_float INDEX iv_index.
       <fs> = lv_float.
     ENDLOOP.
   ENDMETHOD.
@@ -517,7 +527,7 @@ CLASS zcl_matrix IMPLEMENTATION.
       RAISE SIZE_ERROR.
     ENDIF.
 
-    CREATE OBJECT ro_vector EXPORTING size = n.
+    CREATE OBJECT ro_vector EXPORTING size = m.
 
     DO m TIMES.
       i = sy-index.
@@ -600,6 +610,9 @@ CLASS zcl_matrix IMPLEMENTATION.
     DATA: lo_copy_matrix TYPE REF TO zcl_matrix,
           lo_copy_vector TYPE REF TO zcl_vector,
           lo_temp TYPE REF TO zcl_vector.
+    DATA: lr_data TYPE REF TO data.
+    FIELD-SYMBOLS: <fs_table> TYPE INDEX TABLE.
+
 
     IF mv_rows <> mv_cols OR mv_rows <> io_vector->size( ).
       RAISE SIZE_ERROR.
@@ -673,7 +686,10 @@ CLASS zcl_matrix IMPLEMENTATION.
     ENDDO.
 
 * ¬ернем значение матрицы и вектора в исходное
-    me->set( it_table = lo_copy_matrix->get( ) iv_check = ' ' ).
+    lr_data = lo_copy_matrix->get_ref( ).
+    ASSIGN lr_data->* TO <fs_table>.
+
+    me->set( it_table = <fs_table> iv_check = ' ' ).
     io_vector->set( it_column = lo_copy_vector->get( ) ).
     FREE lo_copy_matrix.
     FREE lo_copy_vector.
@@ -724,7 +740,7 @@ CLASS zcl_matrix IMPLEMENTATION.
     ENDLOOP.
   ENDMETHOD.
 
-  METHOD load_csv.
+  METHOD load_from_csv.
     DATA: lt_strings TYPE table_of_strings.
     DATA: lv_string TYPE string.
 
