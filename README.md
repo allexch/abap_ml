@@ -3,11 +3,11 @@ Classes and functionality to reproduce basic Machine Learning stuff in ABAP. Sta
 
 - operations with float vector/matrix  (zcl_matrix, zcl_vector)
 - linear regression (zcl_regression)
-- logistic regression 
-- stochastic gradient descend 
-- also I'll try to implement simple neural net
+- logistic regression ( ..in progress .. )
+- stochastic gradient descend  ( ..in progress .. )
+- also I'll try to implement simple neural net  ( ..in progress .. )
 
-- class for maintaining dynamic dataset, that supports feature engineering like python pandas DataFrame ( zcl_dataset )
+- class for maintaining dynamic dataset, that supports feature engineering like python pandas DataFrame (  ..in progress .. )
 
 All will be available here, and can be installed by copy/paste and maybe some renaming.
 
