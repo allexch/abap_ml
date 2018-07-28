@@ -90,13 +90,6 @@ CLASS zcl_ml_ols_regressor IMPLEMENTATION.
     FIELD-SYMBOLS: <fs_table> TYPE INDEX TABLE.
 
     ro_X = zcl_matrix=>create_copy( io_X ).
-*    DO ro_X->ncolumns( ) TIMES.
-*      i = sy-index.
-*      lo_column = ro_X->get_column( i ).
-*      lo_column->normalize( iv_inplace = abap_true ).
-*      ro_X->set_column( iv_index = i io_vector = lo_column ).
-*      FREE lo_column.
-*    ENDDO.
   ENDMETHOD.
 
 *  solve equation (X^T*X)koefs = X^T*y
