@@ -24,6 +24,8 @@ CLASS zcl_matrix DEFINITION.
       append_row IMPORTING io_vector TYPE REF TO zcl_vector EXCEPTIONS SIZE_ERROR,
       append_column IMPORTING io_vector TYPE REF TO zcl_vector EXCEPTIONS SIZE_ERROR,
 
+      slice_by_rows IMPORTING iv_from TYPE i OPTIONAL iv_to TYPE i OPTIONAL it_indexes TYPE int4_table OPTIONAL iv_inplace TYPE flag DEFAULT ' ' RETURNING VALUE(ro_matrix) TYPE REF TO zcl_matrix EXCEPTIONS INPUT_ERROR,
+
       add IMPORTING io_matrix TYPE REF TO zcl_matrix iv_inplace TYPE flag DEFAULT ' ' RETURNING VALUE(ro_matrix) TYPE REF TO zcl_matrix EXCEPTIONS SIZE_ERROR,
       subtract IMPORTING io_matrix TYPE REF TO zcl_matrix iv_inplace TYPE flag DEFAULT ' ' RETURNING VALUE(ro_matrix) TYPE REF TO zcl_matrix EXCEPTIONS SIZE_ERROR,
       multiply IMPORTING io_matrix TYPE REF TO zcl_matrix iv_inplace TYPE flag DEFAULT ' ' RETURNING VALUE(ro_matrix) TYPE REF TO zcl_matrix EXCEPTIONS SIZE_ERROR,
@@ -43,6 +45,7 @@ CLASS zcl_matrix DEFINITION.
     CLASS-METHODS:
       create_from IMPORTING it_table TYPE ANY TABLE iv_check TYPE flag DEFAULT 'X' RETURNING VALUE(ro_matrix) TYPE REF TO zcl_matrix EXCEPTIONS SIZE_ERROR INPUT_ERROR,
       create_copy IMPORTING io_matrix TYPE REF TO zcl_matrix RETURNING VALUE(ro_matrix) TYPE REF TO zcl_matrix EXCEPTIONS SIZE_ERROR INPUT_ERROR,
+      create_diag IMPORTING iv_size TYPE i iv_value TYPE ty_float DEFAULT 1 io_vector TYPE REF TO zcl_vector OPTIONAL RETURNING VALUE(ro_matrix) TYPE REF TO zcl_matrix EXCEPTIONS SIZE_ERROR,
       load_from_csv IMPORTING iv_filename TYPE string iv_sep TYPE c DEFAULT ';' iv_header TYPE flag DEFAULT 'X' RETURNING VALUE(ro_matrix) TYPE REF TO zcl_matrix EXCEPTIONS SIZE_ERROR INPUT_ERROR,
       load_from_text IMPORTING it_strings TYPE table_of_strings iv_sep TYPE c DEFAULT ';' RETURNING VALUE(ro_matrix) TYPE REF TO zcl_matrix EXCEPTIONS SIZE_ERROR INPUT_ERROR,
       is_numeric_type_kind IMPORTING iv_type_kind TYPE c RETURNING VALUE(rv_ok) TYPE flag.
@@ -311,6 +314,23 @@ CLASS zcl_matrix IMPLEMENTATION.
     ro_matrix = zcl_matrix=>create_from( it_table = <fs_table> iv_check = ' ' ).
   ENDMETHOD.
 
+  METHOD create_diag.
+    IF iv_size <= 0.
+      RAISE SIZE_ERROR.
+    ENDIF.
+
+    CREATE OBJECT ro_matrix EXPORTING rows = iv_size cols = iv_size.
+    IF io_vector IS NOT BOUND.
+      DO iv_size TIMES.
+        ro_matrix->set_pos( i = sy-index j = sy-index iv_value = iv_value ).
+      ENDDO.
+    ELSE.
+      DO io_vector->size( ) TIMES.
+        ro_matrix->set_pos( i = sy-index j = sy-index iv_value = io_vector->get_value( sy-index ) ).
+      ENDDO.
+    ENDIF.
+  ENDMETHOD.
+
   METHOD set_row.
     FIELD-SYMBOLS: <fs_row> TYPE ANY TABLE.
 
@@ -395,6 +415,54 @@ CLASS zcl_matrix IMPLEMENTATION.
     mv_cols = mv_cols + 1.
   ENDMETHOD.
 
+  METHOD slice_by_rows.
+    DATA: lr_data TYPE REF TO DATA.
+    DATA: lt_new_matrix TYPE ty_float_matrix.
+    DATA: lv_index TYPE i.
+    FIELD-SYMBOLS: <fs_float_matrix> TYPE INDEX TABLE.
+    FIELD-SYMBOLS: <fs_row> TYPE INDEX TABLE.
+
+    IF iv_from > iv_to.
+      RAISE INPUT_ERROR.
+    ENDIF.
+
+    IF iv_inplace = abap_false.
+      CREATE OBJECT ro_matrix EXPORTING rows = 0 cols = 0. "empty
+      lr_data = ro_matrix->get_ref( ).
+      ASSIGN lr_data->* TO <fs_float_matrix>.
+    ELSE.
+      REFRESH lt_new_matrix.
+      ASSIGN lt_new_matrix TO <fs_float_matrix>.
+    ENDIF.
+
+    IF iv_from IS NOT INITIAL AND iv_to IS NOT INITIAL.
+      LOOP AT mt_float_matrix ASSIGNING <fs_row> FROM iv_from TO iv_to.
+        APPEND <fs_row> TO <fs_float_matrix>.
+      ENDLOOP.
+
+    ELSEIF it_indexes[] IS NOT INITIAL.
+      LOOP AT it_indexes INTO lv_index.
+        READ TABLE mt_float_matrix ASSIGNING <fs_row> INDEX lv_index.
+        IF sy-subrc = 0.
+          APPEND <fs_row> TO <fs_float_matrix>.
+        ENDIF.
+      ENDLOOP.
+
+    ELSE.
+      RAISE INPUT_ERROR.
+
+    ENDIF.
+
+    IF iv_inplace = abap_false.
+      ro_matrix->mv_rows = LINES( <fs_float_matrix> ).
+      ro_matrix->mv_cols = me->mv_cols.
+    ELSE.
+      me->set( it_table = lt_new_matrix iv_check = ' ' ).
+      ro_matrix = me.
+    ENDIF.
+
+  ENDMETHOD.
+
   METHOD operation_m.
     FIELD-SYMBOLS: <fs> TYPE ty_float,
                    <fs2> TYPE ty_float,
@@ -441,11 +509,11 @@ CLASS zcl_matrix IMPLEMENTATION.
   ENDMETHOD.
 
   METHOD add.
-    me->operation_m( io_matrix = io_matrix iv_inplace = iv_inplace iv_op = '+' ).
+    ro_matrix = me->operation_m( io_matrix = io_matrix iv_inplace = iv_inplace iv_op = '+' ).
   ENDMETHOD.
 
   METHOD subtract.
-    me->operation_m( io_matrix = io_matrix iv_inplace = iv_inplace iv_op = '-' ).
+    ro_matrix = me->operation_m( io_matrix = io_matrix iv_inplace = iv_inplace iv_op = '-' ).
   ENDMETHOD.
 
   METHOD multiply.

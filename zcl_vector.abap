@@ -26,10 +26,13 @@ CLASS zcl_vector DEFINITION.
       get_index IMPORTING iv_value TYPE ty_float RETURNING VALUE(rv_index) TYPE i,
       get_indexes IMPORTING iv_value TYPE ty_float RETURNING VALUE(rt_index) TYPE INT4_TABLE,
 
+      slice_by_index IMPORTING iv_from TYPE i OPTIONAL iv_to TYPE i OPTIONAL it_indexes TYPE int4_table OPTIONAL iv_inplace TYPE flag DEFAULT ' ' RETURNING VALUE(ro_vector) TYPE REF TO zcl_vector EXCEPTIONS INPUT_ERROR,
+
       add IMPORTING it_vector TYPE REF TO zcl_vector iv_inplace TYPE flag DEFAULT ' ' RETURNING VALUE(ro_vector) TYPE REF TO zcl_vector EXCEPTIONS SIZE_ERROR,
       subtract IMPORTING it_vector TYPE REF TO zcl_vector iv_inplace TYPE flag DEFAULT ' ' RETURNING VALUE(ro_vector) TYPE REF TO zcl_vector EXCEPTIONS SIZE_ERROR,
       multv IMPORTING it_vector TYPE REF TO zcl_vector iv_inplace TYPE flag DEFAULT ' ' RETURNING VALUE(ro_vector) TYPE REF TO zcl_vector EXCEPTIONS SIZE_ERROR,
       divv  IMPORTING it_vector TYPE REF TO zcl_vector iv_inplace TYPE flag DEFAULT ' ' RETURNING VALUE(ro_vector) TYPE REF TO zcl_vector EXCEPTIONS SIZE_ERROR,
+      addn  IMPORTING iv_value TYPE ty_float iv_inplace TYPE flag DEFAULT ' ' RETURNING VALUE(ro_vector) TYPE REF TO zcl_vector,
       multn IMPORTING iv_value TYPE ty_float iv_inplace TYPE flag DEFAULT ' ' RETURNING VALUE(ro_vector) TYPE REF TO zcl_vector,
       divn  IMPORTING iv_value TYPE ty_float iv_inplace TYPE flag DEFAULT ' ' RETURNING VALUE(ro_vector) TYPE REF TO zcl_vector,
       pown  IMPORTING iv_value TYPE ty_float iv_inplace TYPE flag DEFAULT ' ' RETURNING VALUE(ro_vector) TYPE REF TO zcl_vector,
@@ -44,6 +47,7 @@ CLASS zcl_vector DEFINITION.
 
       scale IMPORTING iv_inplace TYPE flag DEFAULT ' ' RETURNING VALUE(ro_vector) TYPE REF TO zcl_vector,
       normalize IMPORTING iv_inplace TYPE flag DEFAULT ' ' RETURNING VALUE(ro_vector) TYPE REF TO zcl_vector,
+      shuffle IMPORTING iv_seed TYPE i DEFAULT 1 iv_inplace TYPE flag DEFAULT ' ' RETURNING VALUE(ro_vector) TYPE REF TO zcl_vector,
       apply_func IMPORTING iv_funcstr TYPE c iv_inplace TYPE flag DEFAULT ' ' iv_argstr TYPE string OPTIONAL RETURNING VALUE(ro_vector) TYPE REF TO zcl_vector EXCEPTIONS COUNT_ERROR,
 
       print,
@@ -51,6 +55,7 @@ CLASS zcl_vector DEFINITION.
       constructor IMPORTING size TYPE i fill_value TYPE ty_float OPTIONAL.
     CLASS-METHODS:
       create_from IMPORTING it_column TYPE ANY TABLE RETURNING VALUE(ro_vector) TYPE REF TO zcl_vector EXCEPTIONS SIZE_ERROR INPUT_ERROR,
+      create_range IMPORTING iv_from TYPE ty_float DEFAULT 1 iv_to TYPE ty_float DEFAULT 10 iv_step TYPE ty_float DEFAULT 1 RETURNING VALUE(ro_vector) TYPE REF TO zcl_vector EXCEPTIONS INPUT_ERROR,
       cdot IMPORTING io_vector1 TYPE REF TO zcl_vector io_vector2 TYPE REF TO zcl_vector RETURNING VALUE(rv_value) TYPE ty_float EXCEPTIONS SIZE_ERROR INPUT_ERROR.
 
   PRIVATE SECTION.
@@ -113,6 +118,24 @@ CLASS zcl_vector IMPLEMENTATION.
     ENDIF.
   ENDMETHOD.
 
+  METHOD create_range.
+    DATA: lv_value TYPE ty_float.
+
+    CREATE OBJECT ro_vector EXPORTING size = 1 fill_value = iv_from.
+    IF iv_from = iv_to.
+      RETURN.
+    ENDIF.
+
+    lv_value = iv_from.
+    DO.
+      lv_value = lv_value + iv_step.
+      IF lv_value > iv_to.
+        EXIT.
+      ENDIF.
+      ro_vector->append( lv_value ).
+    ENDDO.
+  ENDMETHOD.
+
   METHOD append.
     APPEND iv_value TO mt_float_vector.
   ENDMETHOD.
@@ -155,6 +178,46 @@ CLASS zcl_vector IMPLEMENTATION.
       APPEND sy-tabix TO rt_index.
     ENDLOOP.
   ENDMETHOD.
+
+  METHOD slice_by_index.
+    DATA: lt_new_vector TYPE ty_float_vector.
+    DATA: lv_index TYPE i.
+    DATA: lv_value TYPE ty_float.
+
+    IF iv_from > iv_to.
+      RAISE INPUT_ERROR.
+    ENDIF.
+
+    REFRESH lt_new_vector.
+
+    IF iv_from IS NOT INITIAL AND iv_to IS NOT INITIAL.
+      LOOP AT mt_float_vector INTO lv_value FROM iv_from TO iv_to.
+        APPEND lv_value TO lt_new_vector.
+      ENDLOOP.
+
+    ELSEIF it_indexes[] IS NOT INITIAL.
+      LOOP AT it_indexes INTO lv_index.
+        READ TABLE mt_float_vector INTO lv_value INDEX lv_index.
+        IF sy-subrc = 0.
+          APPEND lv_value TO lt_new_vector.
+        ENDIF.
+      ENDLOOP.
+
+    ELSE.
+      RAISE INPUT_ERROR.
+
+    ENDIF.
+
+    IF iv_inplace = abap_false.
+      CREATE OBJECT ro_vector EXPORTING size = LINES( lt_new_vector ).
+      ro_vector->set( lt_new_vector ).
+    ELSE.
+      mt_float_vector[] = lt_new_vector[].
+      ro_vector = me.
+    ENDIF.
+
+  ENDMETHOD.
+
 
   METHOD operation_v.
     FIELD-SYMBOLS: <fs> TYPE ty_float,
@@ -256,6 +319,10 @@ CLASS zcl_vector IMPLEMENTATION.
     ENDIF.
   ENDMETHOD.
 
+  METHOD addn.
+    ro_vector = me->operation_n( iv_value = iv_value iv_inplace = iv_inplace iv_op = '+' ).
+  ENDMETHOD.
+
   METHOD multn.
     ro_vector = me->operation_n( iv_value = iv_value iv_inplace = iv_inplace iv_op = '*' ).
   ENDMETHOD.
@@ -298,6 +365,14 @@ CLASS zcl_vector IMPLEMENTATION.
             WHEN 'log1p'. <fs> = log( <fs> + 1 ).
             WHEN 'expm1'. <fs> = exp( <fs> ) - 1.
             WHEN 'round'. <fs> = round( val = <fs> dec = iv_argstr mode = cl_abap_math=>round_half_up ).
+            WHEN 'sigmoid'.
+              IF <fs> > 50.
+                <fs> = 1.
+              ELSEIF <fs> < -50.
+                <fs> = 0.
+              ELSE.
+               <fs> = '1.0' / ( '1.0' + exp( -1 * <fs> ) ).
+              ENDIF.
           ENDCASE.
         CATCH cx_root.
           RAISE COUNT_ERROR.
@@ -473,6 +548,34 @@ CLASS zcl_vector IMPLEMENTATION.
     ELSE.
       ro_vector = me.
     ENDIF.
+  ENDMETHOD.
+
+  METHOD shuffle.
+    DATA: lv_cur_index TYPE i.
+    DATA: lv_tmp_value TYPE ty_float.
+    DATA: lv_rnd_index TYPE i.
+    DATA: lo_rgen TYPE REF TO cl_abap_random_int.
+
+    lv_cur_index = LINES( mt_float_vector ).
+    lo_rgen = cl_abap_random_int=>create( min = 1 max = lv_cur_index seed = iv_seed ).
+
+    IF iv_inplace = abap_false.
+      ro_vector = me.
+    ELSE.
+      ro_vector = zcl_vector=>create_from( me->get( ) ).
+    ENDIF.
+
+    WHILE lv_cur_index <> 0.
+      " Pick a remaining element...
+      lv_rnd_index = lo_rgen->get_next( ).
+
+      " And swap it with the current element.
+      lv_tmp_value = ro_vector->get_value( lv_cur_index ).
+      ro_vector->set_value( iv_index = lv_cur_index iv_value = ro_vector->get_value( lv_rnd_index ) ).
+      ro_vector->set_value( iv_index = lv_rnd_index iv_value = lv_tmp_value ).
+
+      lv_cur_index = lv_cur_index - 1.
+    ENDWHILE.
   ENDMETHOD.
 
   METHOD print.
