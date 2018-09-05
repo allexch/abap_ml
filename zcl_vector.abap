@@ -4,9 +4,7 @@
 
 TYPES: ty_float TYPE p LENGTH 16 DECIMALS 14,
        ty_float_vector TYPE TABLE OF ty_float WITH DEFAULT KEY,
-       ty_float_matrix TYPE TABLE OF ty_float_vector WITH DEFAULT KEY,
-       tt_float TYPE TABLE OF ty_float WITH DEFAULT KEY,
-       tt_matrix TYPE TABLE OF ty_float_vector WITH DEFAULT KEY.
+       ty_float_matrix TYPE TABLE OF ty_float_vector WITH DEFAULT KEY.
 
 
 *----------------------------------------------------------------------*
@@ -16,28 +14,46 @@ TYPES: ty_float TYPE p LENGTH 16 DECIMALS 14,
 CLASS zcl_vector DEFINITION.
   PUBLIC SECTION.
     METHODS:
-      get RETURNING VALUE(rt_vector) TYPE tt_float,
+* get internal table of float values
+      get RETURNING VALUE(rt_vector) TYPE ty_float_vector,
+* get size of the vector
       size RETURNING VALUE(rv_size) TYPE i,
+* set internal table of float values as a vector => better use zcl_vector=>create_from
       set IMPORTING it_column TYPE ANY TABLE EXCEPTIONS SIZE_ERROR INPUT_ERROR,
+* append value to the vector
       append IMPORTING iv_value TYPE ty_float,
+* delete value to the vector
       delete IMPORTING iv_index TYPE i EXCEPTIONS WRONG_INDEX,
+* set value in position
       set_value IMPORTING iv_index TYPE i iv_value TYPE ty_float EXCEPTIONS WRONG_INDEX,
+* get value from position
       get_value IMPORTING iv_index TYPE i RETURNING VALUE(rv_value) TYPE ty_float EXCEPTIONS WRONG_INDEX,
+* get index of values (0 if not found)
       get_index IMPORTING iv_value TYPE ty_float RETURNING VALUE(rv_index) TYPE i,
+* find value in vector and return list of indexes
       get_indexes IMPORTING iv_value TYPE ty_float RETURNING VALUE(rt_index) TYPE INT4_TABLE,
+* get information about containing values in list of pairs "value"-"number_of_occurences"
+      get_values_count RETURNING VALUE(rt_values) TYPE wdy_key_value_list,
 
+* get part of vector by from-to indexes, or by defined list of indexes
       slice_by_index IMPORTING iv_from TYPE i OPTIONAL iv_to TYPE i OPTIONAL it_indexes TYPE int4_table OPTIONAL iv_inplace TYPE flag DEFAULT ' ' RETURNING VALUE(ro_vector) TYPE REF TO zcl_vector EXCEPTIONS INPUT_ERROR,
 
+* operations with another vector
       add IMPORTING it_vector TYPE REF TO zcl_vector iv_inplace TYPE flag DEFAULT ' ' RETURNING VALUE(ro_vector) TYPE REF TO zcl_vector EXCEPTIONS SIZE_ERROR,
       subtract IMPORTING it_vector TYPE REF TO zcl_vector iv_inplace TYPE flag DEFAULT ' ' RETURNING VALUE(ro_vector) TYPE REF TO zcl_vector EXCEPTIONS SIZE_ERROR,
       multv IMPORTING it_vector TYPE REF TO zcl_vector iv_inplace TYPE flag DEFAULT ' ' RETURNING VALUE(ro_vector) TYPE REF TO zcl_vector EXCEPTIONS SIZE_ERROR,
       divv  IMPORTING it_vector TYPE REF TO zcl_vector iv_inplace TYPE flag DEFAULT ' ' RETURNING VALUE(ro_vector) TYPE REF TO zcl_vector EXCEPTIONS SIZE_ERROR,
+
+* operations with number
       addn  IMPORTING iv_value TYPE ty_float iv_inplace TYPE flag DEFAULT ' ' RETURNING VALUE(ro_vector) TYPE REF TO zcl_vector,
       multn IMPORTING iv_value TYPE ty_float iv_inplace TYPE flag DEFAULT ' ' RETURNING VALUE(ro_vector) TYPE REF TO zcl_vector,
       divn  IMPORTING iv_value TYPE ty_float iv_inplace TYPE flag DEFAULT ' ' RETURNING VALUE(ro_vector) TYPE REF TO zcl_vector,
       pown  IMPORTING iv_value TYPE ty_float iv_inplace TYPE flag DEFAULT ' ' RETURNING VALUE(ro_vector) TYPE REF TO zcl_vector,
 
+* dot product with another vector
       dot  IMPORTING it_vector TYPE REF TO zcl_vector RETURNING VALUE(rv_value) TYPE ty_float EXCEPTIONS SIZE_ERROR,
+
+* unary operations
       absv RETURNING VALUE(rv_value) TYPE ty_float,
       min  RETURNING VALUE(rv_value) TYPE ty_float,
       max  RETURNING VALUE(rv_value) TYPE ty_float,
@@ -45,26 +61,39 @@ CLASS zcl_vector DEFINITION.
       std  RETURNING VALUE(rv_value) TYPE ty_float,
       sum  RETURNING VALUE(rv_value) TYPE ty_float,
 
+* scale vector values to [0; 1] interval
       scale IMPORTING iv_inplace TYPE flag DEFAULT ' ' RETURNING VALUE(ro_vector) TYPE REF TO zcl_vector,
+* normalize vector
       normalize IMPORTING iv_inplace TYPE flag DEFAULT ' ' RETURNING VALUE(ro_vector) TYPE REF TO zcl_vector,
+* shuffle values in random mode
       shuffle IMPORTING iv_seed TYPE i DEFAULT 1 iv_inplace TYPE flag DEFAULT ' ' RETURNING VALUE(ro_vector) TYPE REF TO zcl_vector,
+* apply predefined function to all elements of the vector (see list of supported func in code)
       apply_func IMPORTING iv_funcstr TYPE c iv_inplace TYPE flag DEFAULT ' ' iv_argstr TYPE string OPTIONAL RETURNING VALUE(ro_vector) TYPE REF TO zcl_vector EXCEPTIONS COUNT_ERROR,
 
+* write contents to spool
       print,
 
-      constructor IMPORTING size TYPE i fill_value TYPE ty_float OPTIONAL.
+* constructor:
+      constructor IMPORTING size TYPE i                        " size > 0
+                            fill_value TYPE ty_float OPTIONAL. " fill_value - default filler value
     CLASS-METHODS:
+* create vector from any table of numeric elements
       create_from IMPORTING it_column TYPE ANY TABLE RETURNING VALUE(ro_vector) TYPE REF TO zcl_vector EXCEPTIONS SIZE_ERROR INPUT_ERROR,
+* create copy of vector
+      create_copy IMPORTING io_vector TYPE REF TO zcl_vector RETURNING VALUE(ro_vector) TYPE REF TO zcl_vector EXCEPTIONS SIZE_ERROR INPUT_ERROR,
+* create sequence of values starting with iv_from, ending with iv_end or higher, and stepped by iv_step. (Like "range" in python)
       create_range IMPORTING iv_from TYPE ty_float DEFAULT 1 iv_to TYPE ty_float DEFAULT 10 iv_step TYPE ty_float DEFAULT 1 RETURNING VALUE(ro_vector) TYPE REF TO zcl_vector EXCEPTIONS INPUT_ERROR,
+* dot product of two vectors (as class method)
       cdot IMPORTING io_vector1 TYPE REF TO zcl_vector io_vector2 TYPE REF TO zcl_vector RETURNING VALUE(rv_value) TYPE ty_float EXCEPTIONS SIZE_ERROR INPUT_ERROR.
 
   PRIVATE SECTION.
     METHODS:
       operation_v IMPORTING it_vector TYPE REF TO zcl_vector iv_inplace TYPE flag DEFAULT ' ' iv_op TYPE char1 RETURNING VALUE(ro_vector) TYPE REF TO zcl_vector EXCEPTIONS SIZE_ERROR,
       operation_n IMPORTING iv_value TYPE ty_float iv_inplace TYPE flag DEFAULT ' ' iv_op TYPE char1 RETURNING VALUE(ro_vector) TYPE REF TO zcl_vector,
-      operation_f IMPORTING iv_funcstr TYPE c iv_inplace TYPE flag DEFAULT ' ' iv_argstr TYPE string OPTIONAL RETURNING VALUE(ro_vector) TYPE REF TO zcl_vector EXCEPTIONS COUNT_ERROR.
+      operation_f IMPORTING iv_funcstr TYPE c iv_inplace TYPE flag DEFAULT ' ' iv_argstr TYPE string OPTIONAL RETURNING VALUE(ro_vector) TYPE REF TO zcl_vector EXCEPTIONS COUNT_ERROR,
+      get_ref RETURNING VALUE(rr_data) TYPE REF TO data.
 
-    DATA: mt_float_vector TYPE tt_float.
+    DATA: mt_float_vector TYPE ty_float_vector.
 ENDCLASS.
 
 CLASS zcl_vector IMPLEMENTATION.
@@ -83,6 +112,10 @@ CLASS zcl_vector IMPLEMENTATION.
 
   METHOD get.
     rt_vector = mt_float_vector.
+  ENDMETHOD.
+
+  METHOD get_ref.
+    GET REFERENCE OF mt_float_vector INTO rr_data.
   ENDMETHOD.
 
   METHOD size.
@@ -116,6 +149,15 @@ CLASS zcl_vector IMPLEMENTATION.
     IF sy-subrc = 1.
       FREE ro_vector.
     ENDIF.
+  ENDMETHOD.
+
+  METHOD create_copy.
+    DATA: lr_data TYPE REF TO data.
+    FIELD-SYMBOLS: <fs_float_vector> TYPE INDEX TABLE.
+
+    lr_data = io_vector->get_ref( ).
+    ASSIGN lr_data->* TO <fs_float_vector>.
+    ro_vector = zcl_vector=>create_from( it_column = <fs_float_vector> ).
   ENDMETHOD.
 
   METHOD create_range.
@@ -179,6 +221,36 @@ CLASS zcl_vector IMPLEMENTATION.
     ENDLOOP.
   ENDMETHOD.
 
+  METHOD get_values_count.
+    TYPES: BEGIN OF ty_list,
+            value TYPE ty_float,
+            num TYPE i,
+          END OF ty_list.
+    DATA: ls_line TYPE LINE OF wdy_key_value_list.
+    DATA: lv_strkey TYPE string.
+    DATA: ls_list TYPE ty_list.
+    DATA: lt_list TYPE SORTED TABLE OF ty_list WITH UNIQUE KEY value.
+    FIELD-SYMBOLS: <fs> TYPE ty_float.
+    FIELD-SYMBOLS: <fs_list> TYPE ty_list.
+
+    LOOP AT mt_float_vector ASSIGNING <fs>.
+      READ TABLE lt_list ASSIGNING <fs_list> WITH KEY value = <fs>.
+      IF sy-subrc = 0.
+        ADD 1 TO <fs_list>-num.
+      ELSE.
+        ls_list-value = <fs>.
+        ls_list-num = 1.
+        INSERT ls_list INTO TABLE lt_list.
+      ENDIF.
+    ENDLOOP.
+
+    LOOP AT lt_list ASSIGNING <fs_list>.
+      ls_line-key = <fs_list>-value.
+      ls_line-value = <fs_list>-num.
+      APPEND ls_line TO rt_values.
+    ENDLOOP.
+  ENDMETHOD.
+
   METHOD slice_by_index.
     DATA: lt_new_vector TYPE ty_float_vector.
     DATA: lv_index TYPE i.
@@ -223,8 +295,8 @@ CLASS zcl_vector IMPLEMENTATION.
     FIELD-SYMBOLS: <fs> TYPE ty_float,
                    <fs2> TYPE ty_float.
     DATA: lv_index TYPE i.
-    DATA: lt_float_vector TYPE tt_float.
-    DATA: lt_float_vector_out TYPE tt_float.
+    DATA: lt_float_vector TYPE ty_float_vector.
+    DATA: lt_float_vector_out TYPE ty_float_vector.
 
     lt_float_vector = it_vector->get( ).
     IF LINES( lt_float_vector ) <> LINES( mt_float_vector ).
@@ -283,7 +355,7 @@ CLASS zcl_vector IMPLEMENTATION.
   METHOD operation_n.
     FIELD-SYMBOLS: <fs> TYPE ty_float.
     DATA: lv_index TYPE i.
-    DATA: lt_float_vector_out TYPE tt_float.
+    DATA: lt_float_vector_out TYPE ty_float_vector.
 
     IF iv_inplace = abap_false.
       lt_float_vector_out[] = mt_float_vector[].
@@ -338,7 +410,7 @@ CLASS zcl_vector IMPLEMENTATION.
   METHOD operation_f.
     FIELD-SYMBOLS: <fs> TYPE ty_float.
     DATA: lv_index TYPE i.
-    DATA: lt_float_vector_out TYPE tt_float.
+    DATA: lt_float_vector_out TYPE ty_float_vector.
 
     IF iv_inplace = abap_false.
       lt_float_vector_out[] = mt_float_vector[].
@@ -363,6 +435,7 @@ CLASS zcl_vector IMPLEMENTATION.
             WHEN 'tan'.   <fs> = tan( <fs> ).
             WHEN 'log'.   <fs> = log( <fs> ).
             WHEN 'log1p'. <fs> = log( <fs> + 1 ).
+            WHEN 'exp'.   <fs> = exp( <fs> ).
             WHEN 'expm1'. <fs> = exp( <fs> ) - 1.
             WHEN 'round'. <fs> = round( val = <fs> dec = iv_argstr mode = cl_abap_math=>round_half_up ).
             WHEN 'sigmoid'.
@@ -395,7 +468,7 @@ CLASS zcl_vector IMPLEMENTATION.
     FIELD-SYMBOLS: <fs> TYPE ty_float,
                    <fs2> TYPE ty_float.
     DATA: lv_index TYPE i.
-    DATA: lt_float_vector TYPE tt_float.
+    DATA: lt_float_vector TYPE ty_float_vector.
 
     lt_float_vector = it_vector->get( ).
 
@@ -423,7 +496,7 @@ CLASS zcl_vector IMPLEMENTATION.
 
   METHOD absv.
     DATA: lv_float TYPE ty_float.
-    DATA: lt_float_vector TYPE tt_float.
+    DATA: lt_float_vector TYPE ty_float_vector.
 
     rv_value = 0.
     LOOP AT mt_float_vector INTO lv_float.
@@ -435,7 +508,7 @@ CLASS zcl_vector IMPLEMENTATION.
 
   METHOD min.
     DATA: lv_float TYPE ty_float.
-    DATA: lt_float_vector TYPE tt_float.
+    DATA: lt_float_vector TYPE ty_float_vector.
 
     rv_value = 0.
     LOOP AT mt_float_vector INTO lv_float.
@@ -447,7 +520,7 @@ CLASS zcl_vector IMPLEMENTATION.
 
   METHOD max.
     DATA: lv_float TYPE ty_float.
-    DATA: lt_float_vector TYPE tt_float.
+    DATA: lt_float_vector TYPE ty_float_vector.
 
     rv_value = 0.
     LOOP AT mt_float_vector INTO lv_float.
@@ -471,7 +544,7 @@ CLASS zcl_vector IMPLEMENTATION.
   METHOD std.
     DATA: lv_float TYPE ty_float.
     DATA: lv_mean TYPE ty_float.
-    DATA: lt_float_vector TYPE tt_float.
+    DATA: lt_float_vector TYPE ty_float_vector.
 
     IF LINES( mt_float_vector ) = 1.
       rv_value = 0.
@@ -503,7 +576,7 @@ CLASS zcl_vector IMPLEMENTATION.
     DATA: lv_min TYPE ty_float.
     DATA: lv_max TYPE ty_float.
     DATA: lv_scaled_value TYPE ty_float.
-    DATA: lt_float_vector_out TYPE tt_float.
+    DATA: lt_float_vector_out TYPE ty_float_vector.
 
     lv_min = me->min( ).
     lv_max = me->max( ).
@@ -529,7 +602,7 @@ CLASS zcl_vector IMPLEMENTATION.
     DATA: lv_mean TYPE ty_float.
     DATA: lv_std TYPE ty_float.
     DATA: lv_scaled_value TYPE ty_float.
-    DATA: lt_float_vector_out TYPE tt_float.
+    DATA: lt_float_vector_out TYPE ty_float_vector.
 
     lv_mean = me->mean( ).
     lv_std = me->std( ).
@@ -562,7 +635,7 @@ CLASS zcl_vector IMPLEMENTATION.
     IF iv_inplace = abap_false.
       ro_vector = me.
     ELSE.
-      ro_vector = zcl_vector=>create_from( me->get( ) ).
+      ro_vector = zcl_vector=>create_copy( me ).
     ENDIF.
 
     WHILE lv_cur_index <> 0.

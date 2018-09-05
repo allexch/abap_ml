@@ -5,7 +5,7 @@ REPORT z_ml_example.
 * Loss optimization is made by stochastic gradient descend
 **********************************************************************
 
-INCLUDE ZCL_REGRESSION.
+INCLUDE ZCL_SGD_REGRESSION.
 
 PERFORM linear_regression_sgd.
 
@@ -51,56 +51,52 @@ FORM linear_regression_sgd.
   lo_y->print( ).
   WRITE: /.
 
-  DATA: lo_sgd TYPE REF TO zcl_ml_sgd.
+  DATA: lo_reg TYPE REF TO zcl_ml_sgd_regressor.
   DATA: lv_steps TYPE i.
   DATA: lt_info TYPE wdy_key_value_list.
   DATA: ls_info TYPE LINE OF wdy_key_value_list.
-  DATA: lo_w0 TYPE REF TO zcl_vector.
   DATA: lv_value TYPE ty_float.
 
-***
-  CREATE OBJECT lo_w0 EXPORTING size = lo_X->nrows( ) fill_value = 1.
-  lo_X->append_column( lo_w0 ).   " emulate constant feature
-  FREE lo_w0.
-***
+  CREATE OBJECT lo_reg
+    EXPORTING
+      iv_l1_ratio  = '0'
+      iv_l2_ratio  = '0'
+      iv_learning_rate = '0.1'
+      iv_max_steps = 2000
+      iv_batch_size = 5
+      iv_batch_all = abap_true.
 
-  CREATE OBJECT lo_sgd.
-  CREATE OBJECT lo_w0 EXPORTING size = lo_X->ncolumns( ) fill_value = 0.
+  lo_reg->fit(
+    EXPORTING io_X = lo_X io_y = lo_y
+    EXCEPTIONS OTHERS = 1 ).
+  IF sy-subrc <> 0.
+    WRITE 'NOT SOLVED, INTERNAL ERROR'.
+    lo_reg->get_info( IMPORTING ev_steps = lv_steps
+                                et_conv_info = lt_info ).
+    READ TABLE lt_info INTO ls_info INDEX LINES( lt_info ).
+    WRITE: /(7) ls_info-key, (20) ls_info-value.
+    WRITE: /.
+    EXIT.
+  ENDIF.
 
-  lo_sgd->minimize( iv_str_func = 'ZCL_ML_SGD=>LINREG_SQUARE_LOSS'   " can be any custom function, implemented as class method 
-                    iv_str_func_grad = 'ZCL_ML_SGD=>LINREG_SQUARE_LOSS_GRAD' " can be omitted, so grad will calculated numerically 
-                    io_X = lo_X        " in case ML problem - X matrix takes part in loss function, and therefore should be passed via parameter
-                    io_y = lo_y        " in case ML problem - y vector takes part in loss function, and therefore should be passed via parameter
-*					io_args = ...      " any additional data in implementation of your custom function 
-                    iv_learning_rate = '0.05'  
-                    iv_max_steps = 1000
-                    iv_batch_size = 0  " <> 0 - for stochastic grad.descend (part of X matrix for one batch), 0 - usual grad.descend					
-                    iv_batch_all = abap_true
-                    io_w0 = lo_w0 ).   " initial guess 
-
-
-  lo_k = lo_sgd->get_result( ).
-  lo_sgd->get_info( IMPORTING ev_steps = lv_steps
-                              et_conv_info = lt_info ).
+  lo_k = lo_reg->get_coefs( ).
 
   WRITE: /'result:'. NEW-LINE.
   lo_k->print( ).
   WRITE: /.
 
+  lo_reg->get_info( IMPORTING ev_steps = lv_steps
+                              et_conv_info = lt_info ).
+
   READ TABLE lt_info INTO ls_info INDEX LINES( lt_info ).
   WRITE: /(7) ls_info-key, (20) ls_info-value.
+  DATA: dev TYPE ty_float.
+  dev = lo_reg->get_predict_score( io_X = lo_X io_y = lo_y ).
+  WRITE: '   score:', (20) dev.
   WRITE: /.
 
   LOOP AT lt_info INTO ls_info.
     WRITE: /(7) ls_info-key, (20) ls_info-value.
   ENDLOOP.
 
-  lo_w0->set_value( iv_index = 1 iv_value = 1 ).
-  lo_w0->set_value( iv_index = 2 iv_value = -2 ).
-  lo_w0->set_value( iv_index = 3 iv_value = 3 ).
-  lo_w0->set_value( iv_index = 4 iv_value = -4 ).
-  lo_w0->set_value( iv_index = 5 iv_value = 5 ).
-  lo_w0->set_value( iv_index = 6 iv_value = 10 ).
-  lv_value = zcl_ml_sgd=>linreg_square_loss( io_w = lo_w0 io_X = lo_X io_y = lo_y ).
-  WRITE: /'True loss value...', lv_value.
 ENDFORM.

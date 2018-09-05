@@ -11,42 +11,72 @@ INCLUDE ZCL_VECTOR.
 CLASS zcl_matrix DEFINITION.
   PUBLIC SECTION.
     METHODS:
+* get internal table of internal tables of float values (if somebody need it)
       get RETURNING VALUE(rt_matrix) TYPE ty_float_matrix,
+* get row of the matrix as a vector
       get_row IMPORTING iv_index TYPE i RETURNING VALUE(ro_vector) TYPE REF TO zcl_vector  EXCEPTIONS INDEX_ERROR,
+* get column of the matrix as a vector
       get_column IMPORTING iv_index TYPE i RETURNING VALUE(ro_vector) TYPE REF TO zcl_vector EXCEPTIONS INDEX_ERROR,
+* get ij-element of the matrix
       get_pos IMPORTING i TYPE i j TYPE i RETURNING VALUE(rv_value) TYPE ty_float EXCEPTIONS INDEX_ERROR,
+* set the matrix from any table (see zcl_matrix=>create from) :
       set IMPORTING it_table TYPE INDEX TABLE iv_check TYPE flag DEFAULT 'X' EXCEPTIONS SIZE_ERROR INPUT_ERROR,
+* set row of the matrix from a vector
       set_row IMPORTING iv_index TYPE i io_vector TYPE REF TO zcl_vector EXCEPTIONS SIZE_ERROR INDEX_ERROR,
+* set column of the matrix from a vector
       set_column IMPORTING iv_index TYPE i io_vector TYPE REF TO zcl_vector EXCEPTIONS SIZE_ERROR INDEX_ERROR,
+* set value in position
       set_pos IMPORTING i TYPE i j TYPE i iv_value TYPE ty_float EXCEPTIONS SIZE_ERROR INDEX_ERROR,
+* get number of rows
       nrows RETURNING VALUE(rv_size) TYPE i,
+* get number of columns
       ncolumns RETURNING VALUE(rv_size) TYPE i,
+* append row to the matrix
       append_row IMPORTING io_vector TYPE REF TO zcl_vector EXCEPTIONS SIZE_ERROR,
+* append column to the matrix
       append_column IMPORTING io_vector TYPE REF TO zcl_vector EXCEPTIONS SIZE_ERROR,
 
+* get certain rows of the matrix by from-to indexes, or by defined list of indexes
       slice_by_rows IMPORTING iv_from TYPE i OPTIONAL iv_to TYPE i OPTIONAL it_indexes TYPE int4_table OPTIONAL iv_inplace TYPE flag DEFAULT ' ' RETURNING VALUE(ro_matrix) TYPE REF TO zcl_matrix EXCEPTIONS INPUT_ERROR,
 
+* operations with another matrix
       add IMPORTING io_matrix TYPE REF TO zcl_matrix iv_inplace TYPE flag DEFAULT ' ' RETURNING VALUE(ro_matrix) TYPE REF TO zcl_matrix EXCEPTIONS SIZE_ERROR,
       subtract IMPORTING io_matrix TYPE REF TO zcl_matrix iv_inplace TYPE flag DEFAULT ' ' RETURNING VALUE(ro_matrix) TYPE REF TO zcl_matrix EXCEPTIONS SIZE_ERROR,
       multiply IMPORTING io_matrix TYPE REF TO zcl_matrix iv_inplace TYPE flag DEFAULT ' ' RETURNING VALUE(ro_matrix) TYPE REF TO zcl_matrix EXCEPTIONS SIZE_ERROR,
+* multiply by vector
       multiplyv IMPORTING io_vector TYPE REF TO zcl_vector RETURNING VALUE(ro_vector) TYPE REF TO zcl_vector EXCEPTIONS SIZE_ERROR,
+* multiply by number
       multiplyn IMPORTING iv_value TYPE ty_float iv_inplace TYPE flag DEFAULT ' ' RETURNING VALUE(ro_matrix) TYPE REF TO zcl_matrix EXCEPTIONS SIZE_ERROR,
 
+* transpose
       transpose IMPORTING iv_inplace TYPE flag DEFAULT ' ' RETURNING VALUE(ro_matrix) TYPE REF TO zcl_matrix,
+* solve linear system of equations Ax = b, with A as current matrix and b as io_vector
       solve IMPORTING io_vector TYPE REF TO zcl_vector RETURNING VALUE(ro_result) TYPE REF TO zcl_vector EXCEPTIONS SIZE_ERROR RANK_ERROR COUNT_ERROR,
 
       min  RETURNING VALUE(rv_value) TYPE ty_float,
       max  RETURNING VALUE(rv_value) TYPE ty_float,
 
+* write contents to spool (be careful with large dimensions)
       print,
+* save matrix in csv file
       save_csv IMPORTING iv_filename TYPE string iv_sep TYPE c DEFAULT ';' EXCEPTIONS OUTPUT_ERROR,
 
-      constructor IMPORTING rows TYPE i cols TYPE i fill_value TYPE ty_float OPTIONAL.
+* constructor:
+      constructor IMPORTING rows TYPE i cols TYPE i            " size > 0
+                            fill_value TYPE ty_float OPTIONAL. " fill_value - default filler value
     CLASS-METHODS:
+* create a matrix from any table :
+*   if it is standard internal table - process only numeric columns (not TYPE n) - make matrix from them
+*   if it is ty_float_matrix         - check consistency and make a copy
+*   if it is ty_float_vector         - make matrix from a vector  ( N rows, 1 columns )
       create_from IMPORTING it_table TYPE ANY TABLE iv_check TYPE flag DEFAULT 'X' RETURNING VALUE(ro_matrix) TYPE REF TO zcl_matrix EXCEPTIONS SIZE_ERROR INPUT_ERROR,
+* create copy of the matrix
       create_copy IMPORTING io_matrix TYPE REF TO zcl_matrix RETURNING VALUE(ro_matrix) TYPE REF TO zcl_matrix EXCEPTIONS SIZE_ERROR INPUT_ERROR,
+* create diagonal matrix with filler value or with certain vector on diag.
       create_diag IMPORTING iv_size TYPE i iv_value TYPE ty_float DEFAULT 1 io_vector TYPE REF TO zcl_vector OPTIONAL RETURNING VALUE(ro_matrix) TYPE REF TO zcl_matrix EXCEPTIONS SIZE_ERROR,
+* create matrix from csv-file
       load_from_csv IMPORTING iv_filename TYPE string iv_sep TYPE c DEFAULT ';' iv_header TYPE flag DEFAULT 'X' RETURNING VALUE(ro_matrix) TYPE REF TO zcl_matrix EXCEPTIONS SIZE_ERROR INPUT_ERROR,
+* create matrix from strings separated by chosen "separator"
       load_from_text IMPORTING it_strings TYPE table_of_strings iv_sep TYPE c DEFAULT ';' RETURNING VALUE(ro_matrix) TYPE REF TO zcl_matrix EXCEPTIONS SIZE_ERROR INPUT_ERROR,
       is_numeric_type_kind IMPORTING iv_type_kind TYPE c RETURNING VALUE(rv_ok) TYPE flag.
 
@@ -766,7 +796,7 @@ CLASS zcl_matrix IMPLEMENTATION.
 
   METHOD min.
     DATA: lv_float TYPE ty_float.
-    DATA: lt_float_vector TYPE tt_float.
+    DATA: lt_float_vector TYPE ty_float_vector.
     DATA: lv_row TYPE i.
 
     rv_value = 0.
@@ -782,7 +812,7 @@ CLASS zcl_matrix IMPLEMENTATION.
 
   METHOD max.
     DATA: lv_float TYPE ty_float.
-    DATA: lt_float_vector TYPE tt_float.
+    DATA: lt_float_vector TYPE ty_float_vector.
     DATA: lv_row TYPE i.
 
     rv_value = 0.

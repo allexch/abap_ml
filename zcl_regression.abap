@@ -8,11 +8,13 @@ INCLUDE ZCL_SGD.
 * REGRESSION CLASSES
 *----------------------------------------------------------------------*
 
+* Base abstract class
+*----------------------------------------------------------------------*
 CLASS zcl_ml_regression DEFINITION ABSTRACT.
   PUBLIC SECTION.
     METHODS:
       constructor,
-      fit IMPORTING io_X TYPE REF TO zcl_matrix  io_y TYPE REF TO zcl_vector EXCEPTIONS SIZE_ERROR SOLVE_ERROR,
+      fit IMPORTING io_X TYPE REF TO zcl_matrix  io_y TYPE REF TO zcl_vector EXCEPTIONS SIZE_ERROR SOLVE_ERROR WRONG_LABELS,
       predict IMPORTING io_X TYPE REF TO zcl_matrix RETURNING VALUE(ro_y_pred) TYPE REF TO zcl_vector EXCEPTIONS SIZE_ERROR KOEFS_ERROR,
       get_coefs RETURNING VALUE(ro_coefs) TYPE REF TO zcl_vector,
       get_predict_score IMPORTING io_X TYPE REF TO zcl_matrix io_y TYPE REF TO zcl_vector RETURNING VALUE(rv_value) TYPE ty_float EXCEPTIONS SIZE_ERROR KOEFS_ERROR.
@@ -34,7 +36,7 @@ CLASS zcl_ml_regression IMPLEMENTATION.
 
 * return copy of coefs
   METHOD get_coefs.
-    ro_coefs = zcl_vector=>create_from( mo_coefs->get( ) ).
+    ro_coefs = zcl_vector=>create_copy( mo_coefs ).
   ENDMETHOD.
 
 * return coefficient of determination R^2 of the prediction
@@ -60,8 +62,8 @@ CLASS zcl_ml_regression IMPLEMENTATION.
   ENDMETHOD.
 ENDCLASS.
 
+* (Weighted) Ordinary Least Squares
 *----------------------------------------------------------------------*
-
 CLASS zcl_ml_linear_regression DEFINITION INHERITING FROM zcl_ml_regression.
   PUBLIC SECTION.
     METHODS:
@@ -70,8 +72,6 @@ CLASS zcl_ml_linear_regression DEFINITION INHERITING FROM zcl_ml_regression.
       predict REDEFINITION.
 
   PROTECTED SECTION.
-    METHODS:
-      normalize_features IMPORTING io_X TYPE REF TO zcl_matrix RETURNING VALUE(ro_X) TYPE REF TO zcl_matrix.
     DATA:
       mv_ridge_coef TYPE ty_float.
 ENDCLASS.
@@ -80,16 +80,6 @@ CLASS zcl_ml_linear_regression IMPLEMENTATION.
   METHOD constructor.
     super->constructor( ).
     mv_ridge_coef = iv_ridge_coef.
-  ENDMETHOD.
-
-* normalize io_X by columns ( not done )
-  METHOD normalize_features.
-    DATA: lo_column TYPE REF TO zcl_vector.
-    DATA: i TYPE i.
-    DATA: lr_data TYPE REF TO data.
-    FIELD-SYMBOLS: <fs_table> TYPE INDEX TABLE.
-
-    ro_X = zcl_matrix=>create_copy( io_X ).
   ENDMETHOD.
 
 *  solve equation (X^T*X)coefs = X^T*y
@@ -143,8 +133,8 @@ CLASS zcl_ml_linear_regression IMPLEMENTATION.
 
 ENDCLASS.
 
+* Logistic regression, analytic solution based on iterative algorithm
 *----------------------------------------------------------------------*
-
 CLASS zcl_ml_logistic_regression DEFINITION INHERITING FROM zcl_ml_regression.
   PUBLIC SECTION.
     METHODS:
@@ -158,8 +148,8 @@ CLASS zcl_ml_logistic_regression DEFINITION INHERITING FROM zcl_ml_regression.
     DATA:
       mv_ridge_coef TYPE ty_float,
       mv_eps TYPE ty_float,
-      mv_steps TYPE i,
-      mt_conv_info TYPE wdy_key_value_list.
+      mv_steps TYPE i,                       " number of steps
+      mt_conv_info TYPE wdy_key_value_list.  " step-by-step convergency information
 ENDCLASS.
 
 CLASS zcl_ml_logistic_regression IMPLEMENTATION.
@@ -211,14 +201,14 @@ CLASS zcl_ml_logistic_regression IMPLEMENTATION.
       lo_w = lo_p->multv( lo_p->multn( -1 )->addn( 1 ) ).       " w = p * (1-p)
 
       " in order to avoid division by zero:
-      lo_upd_w = zcl_vector=>create_from( lo_w->get( ) ).
+      lo_upd_w = zcl_vector=>create_copy( lo_w ).
       lt_indexes = lo_w->get_indexes( 0 ).
       LOOP AT lt_indexes INTO lv_index.
         lo_upd_w->set_value( iv_index = lv_index iv_value = '0.01' ).
       ENDLOOP.
 
       lo_u = lo_z->add( io_y->subtract( lo_p )->divv( lo_upd_w ) ). " u = z + (y-p)/w
-      lo_koefs_old = zcl_vector=>create_from( mo_coefs->get( ) ).
+      lo_koefs_old = zcl_vector=>create_copy( mo_coefs ).
 
       lo_transpose_X = lo_X->transpose( ).
       lo_diag_W = zcl_matrix=>create_diag( iv_size = lo_w->size( ) io_vector = lo_w ).

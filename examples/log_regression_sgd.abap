@@ -1,14 +1,15 @@
 REPORT z_ml_example.
 
 **********************************************************************
-* Example of logistic regression on randomly generated data 
+* Example of logistic regression on randomly generated data
+* Loss optimization is made by stochastic gradient descent
 **********************************************************************
 
-INCLUDE ZCL_REGRESSION.
+INCLUDE ZCL_SGD_REGRESSION.
 
-PERFORM logistic_regression.
+PERFORM logistic_regression_sgd.
 
-FORM logistic_regression.
+FORM logistic_regression_sgd.
   DATA: BEGIN OF ls,
     a TYPE i,
     b TYPE i,
@@ -59,26 +60,51 @@ FORM logistic_regression.
   lo_y->print( ).
   WRITE: /.
 
-  DATA: lo_reg TYPE REF TO zcl_ml_logistic_regression.
 
-  CREATE OBJECT lo_reg EXPORTING iv_ridge_coef = '0.001' iv_eps = '0.0001'.
-  lo_reg->fit( io_X = lo_X io_y = lo_y ).
-  lo_k = lo_reg->get_coefs( ).
-  lo_reg->get_info( IMPORTING ev_steps = lv_steps
-                              et_conv_info = lt_info ).
+  DATA: lo_cls TYPE REF TO zcl_ml_sgd_classifier.
+  DATA: lv_value TYPE ty_float.
 
-  WRITE: /'coefs and score:'. NEW-LINE.
+  CREATE OBJECT lo_cls
+    EXPORTING
+      iv_loss_func = 'log'
+      iv_l1_ratio  = '0'
+      iv_l2_ratio  = '0'
+      iv_learning_rate = '0.5'
+      iv_max_steps = 1000
+      iv_batch_size = 5
+      iv_batch_all = abap_true.
+
+  lo_cls->fit(
+    EXPORTING io_X = lo_X io_y = lo_y
+    EXCEPTIONS OTHERS = 1 ).
+  IF sy-subrc <> 0.
+    WRITE 'NOT SOLVED'.
+    lo_cls->get_info( IMPORTING ev_steps = lv_steps
+                                et_conv_info = lt_info ).
+    READ TABLE lt_info INTO ls_info INDEX LINES( lt_info ).
+    WRITE: /(7) ls_info-key, (20) ls_info-value.
+    WRITE: /.
+    EXIT.
+  ENDIF.
+
+  lo_k = lo_cls->get_coefs( ).
+
+  WRITE: /'result:'. NEW-LINE.
   lo_k->print( ).
+  WRITE: /.
+
+  lo_cls->get_info( IMPORTING ev_steps = lv_steps
+                              et_conv_info = lt_info ).
 
   READ TABLE lt_info INTO ls_info INDEX LINES( lt_info ).
   WRITE: /(7) ls_info-key, (20) ls_info-value.
+  DATA: dev TYPE ty_float.
+  dev = lo_cls->get_predict_score( io_X = lo_X io_y = lo_y ).
+  WRITE: '   score:', (20) dev.
   WRITE: /.
 
   LOOP AT lt_info INTO ls_info.
     WRITE: /(7) ls_info-key, (20) ls_info-value.
   ENDLOOP.
 
-  DATA: dev TYPE ty_float.
-  dev = lo_reg->get_predict_score( io_X = lo_X io_y = lo_y ).
-  WRITE dev.
 ENDFORM.

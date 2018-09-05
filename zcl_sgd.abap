@@ -5,38 +5,35 @@
 INCLUDE ZCL_MATRIX.
 
 *----------------------------------------------------------------------*
-* GRADIENT DESCEND
+* GRADIENT DESCENT
 *----------------------------------------------------------------------*
 
 CLASS zcl_ml_sgd DEFINITION.
   PUBLIC SECTION.
     METHODS:
-      minimize IMPORTING iv_str_func TYPE c
-                         iv_str_func_grad TYPE c OPTIONAL
-                         io_X TYPE REF TO zcl_matrix OPTIONAL
-                         io_y TYPE REF TO zcl_vector OPTIONAL
-                         ir_args TYPE REF TO DATA OPTIONAL
-                         iv_batch_size TYPE ty_float DEFAULT 0
-                         iv_batch_all TYPE flag DEFAULT ' '
-                         iv_learning_rate TYPE ty_float DEFAULT '0.1'
-                         iv_eps TYPE ty_float DEFAULT '0.0001'
-                         iv_max_steps TYPE i DEFAULT 100
-                         iv_random_seed TYPE i DEFAULT 1
-                         io_w0 TYPE REF TO zcl_vector OPTIONAL
-               EXPORTING ev_ok TYPE flag
-                         eo_result TYPE REF TO zcl_vector
+      minimize IMPORTING iv_str_func TYPE c                           " can be any custom function, implemented as class method
+                         iv_str_func_grad TYPE c OPTIONAL             " can be omitted, so grad will be calculated numerically
+                         io_X TYPE REF TO zcl_matrix OPTIONAL         " in case of ML problem - X matrix takes part in loss function, and therefore should be passed via parameter
+                         io_y TYPE REF TO zcl_vector OPTIONAL         " in case of ML problem - y vector takes part in loss function, and therefore should be passed via parameter
+                         ir_args TYPE REF TO DATA OPTIONAL            " any additional data in implementation of your custom function
+                         iv_batch_size TYPE ty_float DEFAULT 0        " <> 0 - for stochastic grad.descent (part of X matrix for one batch), 0 - usual grad.descend
+                         iv_batch_all TYPE flag DEFAULT ' '           " used for SGD mode, ' ' - batch selected randomly once per epoch, 'X' - epoch consist of several batches and covered all data
+                         iv_learning_rate TYPE ty_float DEFAULT '0.1' " coefficient of gradient
+                         iv_eps TYPE ty_float DEFAULT '0.0001'        " stop-criteria, minimun difference of loss functions between epochs
+                         iv_max_steps TYPE i DEFAULT 100              " stop-criteria, maximum number of iterations
+                         iv_random_seed TYPE i DEFAULT 1              " random seed
+                         io_w0 TYPE REF TO zcl_vector OPTIONAL        " initial guess
+               EXPORTING ev_ok TYPE flag                              " True - if convergency is reached
+                         eo_result TYPE REF TO zcl_vector             " result vector
               EXCEPTIONS UNKNOWN_FUNC INPUT_ERROR SOLVE_ERROR,
 
-      get_result RETURNING VALUE(ro_result) TYPE REF TO zcl_vector,
-      get_info EXPORTING ev_steps TYPE i
+      get_result RETURNING VALUE(ro_result) TYPE REF TO zcl_vector,   " get result vector
+      get_info EXPORTING ev_steps TYPE i                              " get step-by-step convergency information
                          et_conv_info TYPE wdy_key_value_list,
       constructor.
 
     CLASS-METHODS:
-      linreg_square_loss IMPORTING io_w TYPE REF TO zcl_vector io_X TYPE REF TO zcl_matrix io_y TYPE REF TO zcl_vector ir_args TYPE REF TO DATA OPTIONAL RETURNING VALUE(rv_value) TYPE ty_float,
-      linreg_square_loss_grad IMPORTING io_w TYPE REF TO zcl_vector io_X TYPE REF TO zcl_matrix io_y TYPE REF TO zcl_vector ir_args TYPE REF TO DATA OPTIONAL RETURNING VALUE(ro_vector) TYPE REF TO zcl_vector,
-      test IMPORTING io_w TYPE REF TO zcl_vector RETURNING VALUE(rv_value) TYPE ty_float,
-      test_grad IMPORTING io_w TYPE REF TO zcl_vector RETURNING VALUE(ro_vector) TYPE REF TO zcl_vector.
+      test IMPORTING io_w TYPE REF TO zcl_vector RETURNING VALUE(rv_value) TYPE ty_float.   " Test function, use string 'test' to pass it "iv_str_func" parameter
 
   PRIVATE SECTION.
     DATA:
@@ -53,8 +50,7 @@ CLASS zcl_ml_sgd DEFINITION.
       mv_batch_passes TYPE i,
       mv_batch_size TYPE ty_float,
       mv_batch_curr TYPE i,
-      mo_shuffle_indexes TYPE REF TO zcl_vector,
-      mv_curr_loss_value TYPE ty_float.
+      mo_shuffle_indexes TYPE REF TO zcl_vector.
     METHODS:
       parse_str_func IMPORTING iv_str_func TYPE c
                       CHANGING cv_str_func TYPE string
@@ -67,17 +63,16 @@ CLASS zcl_ml_sgd DEFINITION.
                      EXPORTING ro_X TYPE REF TO zcl_matrix
                                ro_y TYPE REF TO zcl_vector
                                ro_done TYPE flag,
-      update_mini_batch IMPORTING io_w TYPE REF TO zcl_vector
-                                  io_X TYPE REF TO zcl_matrix
-                                  io_y TYPE REF TO zcl_vector
-                                  ir_args TYPE REF TO DATA
-                                  iv_learning_rate TYPE ty_float
-                                  iv_eps TYPE ty_float
-                        EXPORTING rv_ok TYPE flag
-                                  rv_loss_value TYPE ty_float,
+      update_batch IMPORTING io_w TYPE REF TO zcl_vector
+                             io_X TYPE REF TO zcl_matrix
+                             io_y TYPE REF TO zcl_vector
+                             ir_args TYPE REF TO DATA
+                             iv_learning_rate TYPE ty_float
+                             iv_eps TYPE ty_float
+                   EXPORTING rv_loss_value TYPE ty_float,
 
-      run_loss_func IMPORTING io_w TYPE REF TO zcl_vector io_X TYPE REF TO zcl_matrix io_y TYPE REF TO zcl_vector ir_args TYPE REF TO DATA OPTIONAL RETURNING VALUE(rv_value) TYPE ty_float,
-      run_loss_grad_func IMPORTING io_w TYPE REF TO zcl_vector io_X TYPE REF TO zcl_matrix io_y TYPE REF TO zcl_vector ir_args TYPE REF TO DATA OPTIONAL RETURNING VALUE(ro_vector) TYPE REF TO zcl_vector,
+      run_func IMPORTING io_w TYPE REF TO zcl_vector io_X TYPE REF TO zcl_matrix io_y TYPE REF TO zcl_vector ir_args TYPE REF TO DATA OPTIONAL RETURNING VALUE(rv_value) TYPE ty_float,
+      run_grad_func IMPORTING io_w TYPE REF TO zcl_vector io_X TYPE REF TO zcl_matrix io_y TYPE REF TO zcl_vector ir_args TYPE REF TO DATA OPTIONAL RETURNING VALUE(ro_vector) TYPE REF TO zcl_vector,
       calculate_grad_numerically IMPORTING io_w TYPE REF TO zcl_vector io_X TYPE REF TO zcl_matrix io_y TYPE REF TO zcl_vector ir_args TYPE REF TO DATA OPTIONAL RETURNING VALUE(ro_vector) TYPE REF TO zcl_vector.
 ENDCLASS.
 
@@ -85,7 +80,7 @@ CLASS zcl_ml_sgd IMPLEMENTATION.
   METHOD constructor.
   ENDMETHOD.
 
-  METHOD run_loss_func.
+  METHOD run_func.
     CASE mv_str_func.
       WHEN 'test'.
         rv_value = test( io_w = io_w ).
@@ -100,22 +95,17 @@ CLASS zcl_ml_sgd IMPLEMENTATION.
     ENDCASE.
   ENDMETHOD.
 
-  METHOD run_loss_grad_func.
-    CASE mv_str_func.
-      WHEN 'test'.
-        ro_vector = test_grad( io_w = io_w ).
-      WHEN OTHERS.
-        IF mv_class_grad IS NOT INITIAL.
-          CALL METHOD (mv_class_grad)=>(mv_method_grad)
-            EXPORTING io_w = io_w
-                      io_X = io_X
-                      io_y = io_y
-                      ir_args = ir_args
-            RECEIVING ro_vector = ro_vector.
-        ELSE.
-          ro_vector = calculate_grad_numerically( io_w = io_w io_X = io_X io_y = io_y ir_args = ir_args ).
-        ENDIF.
-    ENDCASE.
+  METHOD run_grad_func.
+    IF mv_class_grad IS NOT INITIAL.
+      CALL METHOD (mv_class_grad)=>(mv_method_grad)
+        EXPORTING io_w = io_w
+                  io_X = io_X
+                  io_y = io_y
+                  ir_args = ir_args
+        RECEIVING ro_vector = ro_vector.
+    ELSE.
+      ro_vector = calculate_grad_numerically( io_w = io_w io_X = io_X io_y = io_y ir_args = ir_args ).
+    ENDIF.
   ENDMETHOD.
 
   METHOD calculate_grad_numerically.
@@ -134,11 +124,11 @@ CLASS zcl_ml_sgd IMPLEMENTATION.
 
       lv_value = lv_copy_value + lv_eps.
       io_w->set_value( iv_index = lv_index iv_value = lv_value ).
-      lv_delta_plus = run_loss_func( io_w = io_w io_X = io_X io_y = io_y ir_args = ir_args ).
+      lv_delta_plus = run_func( io_w = io_w io_X = io_X io_y = io_y ir_args = ir_args ).
 
       lv_value = lv_copy_value - lv_eps.
       io_w->set_value( iv_index = lv_index iv_value = lv_value ).
-      lv_delta_minus = run_loss_func( io_w = io_w io_X = io_X io_y = io_y ir_args = ir_args ).
+      lv_delta_minus = run_func( io_w = io_w io_X = io_X io_y = io_y ir_args = ir_args ).
 
       lv_value = ( lv_delta_plus - lv_delta_minus ) / ( 2 * lv_eps ).
       APPEND lv_value TO lt_float_vector.
@@ -164,7 +154,9 @@ CLASS zcl_ml_sgd IMPLEMENTATION.
           RAISE UNKNOWN_FUNC.
       ENDTRY.
       cv_str_func = iv_str_func.
-    ELSEIF iv_str_func <> 'test'.
+    ELSEIF iv_str_func = 'test'.
+      cv_str_func = iv_str_func.
+    ELSE.
       RAISE UNKNOWN_FUNC.
     ENDIF.
   ENDMETHOD.
@@ -242,29 +234,16 @@ CLASS zcl_ml_sgd IMPLEMENTATION.
 
   ENDMETHOD.
 
-  METHOD update_mini_batch.
-    DATA: lv_target_value TYPE ty_float.
+  METHOD update_batch.
     DATA: lv_target_value_new TYPE ty_float.
     DATA: lo_grad TYPE REF TO zcl_vector.
-    DATA: lv_diff TYPE ty_float.
     DATA: lv_size TYPE ty_float.
     DATA: ls_info LIKE LINE OF mt_conv_info.
 
-    IF mv_steps = 1.
-      lv_target_value = run_loss_func( io_w = io_w io_X = io_X io_y = io_y ir_args = ir_args ).
-    ELSE.
-      lv_target_value = mv_curr_loss_value.
-    ENDIF.
-    lo_grad = run_loss_grad_func( io_w = io_w io_X = io_X io_y = io_y ir_args = ir_args ).
+    lo_grad = run_grad_func( io_w = io_w io_X = io_X io_y = io_y ir_args = ir_args ).
     lo_grad = lo_grad->multn( iv_learning_rate ).
     io_w->subtract( it_vector = lo_grad iv_inplace = 'X' ).
-    lv_target_value_new = run_loss_func( io_w = io_w io_X = io_X io_y = io_y ir_args = ir_args ).
-    lv_diff = abs( lv_target_value_new - lv_target_value ).
-    IF lv_diff < iv_eps.
-      rv_ok = abap_true.
-    ELSE.
-      rv_ok = abap_false.
-    ENDIF.
+    lv_target_value_new = run_func( io_w = io_w io_X = io_X io_y = io_y ir_args = ir_args ).
 
     IF mv_batch_passes = 0.
       ls_info-key = mv_steps.
@@ -276,7 +255,6 @@ CLASS zcl_ml_sgd IMPLEMENTATION.
     ls_info-value = lv_char.
     APPEND ls_info TO mt_conv_info.
 
-    mv_curr_loss_value = lv_target_value_new.
     rv_loss_value = lv_target_value_new.
   ENDMETHOD.
 
@@ -288,6 +266,7 @@ CLASS zcl_ml_sgd IMPLEMENTATION.
     DATA: lv_loss_up TYPE i.
     DATA: lv_loss_value TYPE ty_float.
     DATA: lv_prev_loss_value TYPE ty_float.
+    DATA: lv_diff TYPE ty_float.
     DATA: lv_done TYPE flag.
 
     parse_str_func(
@@ -318,7 +297,7 @@ CLASS zcl_ml_sgd IMPLEMENTATION.
     ev_ok = abap_false.
     FREE mo_result.
     IF io_w0 IS BOUND.
-      mo_result = zcl_vector=>create_from( io_w0->get( ) ).
+      mo_result = zcl_vector=>create_copy( io_w0 ).
     ELSE.
       CREATE OBJECT mo_result EXPORTING size = io_X->ncolumns( ).
     ENDIF.
@@ -340,7 +319,7 @@ CLASS zcl_ml_sgd IMPLEMENTATION.
     FREE mo_shuffle_indexes.
 
 
-    WHILE mv_steps < iv_max_steps.
+    WHILE mv_steps < iv_max_steps AND ev_ok = abap_false.
       mv_steps = mv_steps + 1.
 
       lv_done = abap_false.
@@ -354,23 +333,21 @@ CLASS zcl_ml_sgd IMPLEMENTATION.
                     ro_y           = lo_y_part
                     ro_done        = lv_done ).
 
-        update_mini_batch(
+        update_batch(
           EXPORTING io_w             = mo_result
                     io_X             = lo_X_part
                     io_y             = lo_y_part
                     ir_args          = ir_args
                     iv_eps           = iv_eps
                     iv_learning_rate = iv_learning_rate
-          IMPORTING rv_ok            = lv_ok
-                    rv_loss_value    = lv_loss_value ).
-
-        IF lv_ok = abap_true.
-          lv_done = abap_true.
-          ev_ok = abap_true.
-          EXIT.
-        ENDIF.
+          IMPORTING rv_loss_value    = lv_loss_value ).
 
       ENDWHILE.
+
+      lv_diff = abs( lv_loss_value - lv_prev_loss_value ).
+      IF lv_diff < iv_eps.
+        ev_ok = abap_true.
+      ENDIF.
 
       IF mv_steps > 1 AND lv_loss_value > lv_prev_loss_value.
         ADD 1 TO lv_loss_up.
@@ -396,54 +373,12 @@ CLASS zcl_ml_sgd IMPLEMENTATION.
     ev_steps = mv_steps.
     et_conv_info = mt_conv_info.
   ENDMETHOD.
-*--------------------------------------------------------------------*
-  METHOD linreg_square_loss.
-* sum [( y - Xw ) ^ 2]
-    DATA: lo_vector TYPE REF TO zcl_vector.
-
-    lo_vector = io_X->multiplyv( io_w )->subtract( io_y ).
-    lo_vector->pown( iv_value = 2 iv_inplace = 'X' ).
-    rv_value = lo_vector->sum( ).
-  ENDMETHOD.
-
-  METHOD linreg_square_loss_grad.
-* d/d(wj) = sum(i) [ -2*( yi - yi_pred ) * xij ]
-    DATA: lt_float_vector TYPE ty_float_vector.
-    DATA: lo_y_pred TYPE REF TO zcl_vector.
-    DATA: lo_tmp_vector TYPE REF TO zcl_vector.
-    DATA: lv_value TYPE ty_float.
-    DATA: lv_scaler TYPE ty_float.
-
-    lo_y_pred = io_X->multiplyv( io_w ).
-    lo_tmp_vector = io_y->subtract( lo_y_pred )->multn( -1 ).
-
-    DO io_w->size( ) TIMES.
-      lv_value = lo_tmp_vector->dot( io_X->get_column( sy-index ) ).
-      APPEND lv_value TO lt_float_vector.
-    ENDDO.
-
-    ro_vector = zcl_vector=>create_from( lt_float_vector ).
-
-    lv_scaler = nmax( val1 = abs( ro_vector->min( ) )
-                      val2 = abs( ro_vector->max( ) ) ).
-    ro_vector = ro_vector->divn( lv_scaler ).
-  ENDMETHOD.
 
   METHOD test.
+    " F(x) = (x1-1)^2 + (x2-2)^2 + (x3-3)^2 + (x4-4)^2 + (x5+5)^2 + (x6+6)^2 - 10
+    " minimum at X = [1; 2; 3; 4; -5; -6]
+    " min(F(x)) = -10
     rv_value = ( io_w->get_value( 1 ) - 1 ) ** 2 + ( io_w->get_value( 2 ) - 2 ) ** 2 + ( io_w->get_value( 3 ) - 3 ) ** 2 + ( io_w->get_value( 4 ) - 4 ) ** 2 + ( io_w->get_value( 5 ) + 5 ) ** 2 + ( io_w->get_value( 6 ) + 6 ) ** 2 - 10.
   ENDMETHOD.
 
-  METHOD test_grad.
-    DATA: lv_value TYPE ty_float.
-    DATA: lt_values TYPE ty_float_vector.
-    lv_value = ( io_w->get_value( 1 ) - 1 ) * 2. APPEND lv_value TO lt_values.
-    lv_value = ( io_w->get_value( 2 ) - 2 ) * 2. APPEND lv_value TO lt_values.
-    lv_value = ( io_w->get_value( 3 ) - 3 ) * 2. APPEND lv_value TO lt_values.
-    lv_value = ( io_w->get_value( 4 ) - 4 ) * 2. APPEND lv_value TO lt_values.
-    lv_value = ( io_w->get_value( 5 ) + 5 ) * 2. APPEND lv_value TO lt_values.
-    lv_value = ( io_w->get_value( 6 ) + 6 ) * 2. APPEND lv_value TO lt_values.
-    ro_vector = zcl_vector=>create_from( lt_values ).
-  ENDMETHOD.
-
 ENDCLASS.
-
